@@ -73,9 +73,10 @@ class  CCAComparison {
 	void CheckThroughput(); 
 	uint32_t bytesTotal{0};
 	uint32_t packetsReceived{0}; 
+  std::string m_CSVfileName{"throughput.oputput_run.csv"};
 
 
-}
+};
 // connect to a number of traces
 static void
 CwndChange (Ptr<OutputStreamWrapper> stream, uint32_t oldCwnd, uint32_t newCwnd)
@@ -160,31 +161,27 @@ CCAComparison::CheckThroughput()
     std::ofstream out(m_CSVfileName, std::ios::app);
 
     out << (Simulator::Now()).GetSeconds() << "," << kbs << "," << packetsReceived << ","
-       << m_nSinks << "," << m_protocolName << "," << m_txp << "" << std::endl;
+      << std::endl;
     
     
     out.close();
 
     packetsReceived = 0;
-    Simulator::Schedule(Seconds(1.0), &RoutingExperiment::CheckThroughput, this);
+    Simulator::Schedule(Seconds(1.0), &CCAComparison::CheckThroughput, this);
 }
 
 int main (int argc, char *argv[])
-f{
+{
 
 
-	CCCAComparison experiment; 
-	experiment.run(argc, argv);
+	CCAComparison experiment; 
+	experiment.Run(argc, argv);
 	return 0; 
 
 }
 
 void CCAComparison::Run(int argc, char* argv[]) {
 
-
-
-
-} 
 
   std::string transport_prot = "QuicBbr";
   double error_p = 0.0;
@@ -380,6 +377,10 @@ void CCAComparison::Run(int argc, char* argv[]) {
       PacketSinkHelper sinkHelper ("ns3::QuicSocketFactory", sinkLocalAddress);
       sinkHelper.SetAttribute ("Protocol", TypeIdValue (QuicSocketFactory::GetTypeId ()));
       serverApps.Add(sinkHelper.Install (sinks.Get (i)));
+
+      //Ptr<Socket> sink = Socket::CreateSocket(sinks.Get(i), QuicSocketFactory::GetTypeId()); 
+      //sink->Bind(InetSocketAddress (sink_interfaces.GetAddress (i, 0), port));
+      //sink->SetRecvCallback(MakeCallback(&CCAComparison::ReceivePacket, this));
     }
 
   serverApps.Start (Seconds (0.99));
@@ -411,7 +412,7 @@ void CCAComparison::Run(int argc, char* argv[]) {
       flowHelper.InstallAll ();
     }
 
-  CheckThroughput();
+  //CheckThroughput();
   Simulator::Stop (Seconds (stop_time));
   Simulator::Run ();
 
@@ -419,7 +420,9 @@ void CCAComparison::Run(int argc, char* argv[]) {
     {
       flowHelper.SerializeToXmlFile (prefix_file_name + ".flowmonitor", true, true);
     }
-x
+
   Simulator::Destroy ();
-  return 0;
-}
+
+} 
+
+ 

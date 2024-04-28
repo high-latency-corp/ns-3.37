@@ -142,7 +142,7 @@ main(int argc, char* argv[])
     NS_ASSERT_MSG(((sender == "gw") || (sender == "ut") || (sender == "both")),
                   "Sender argument invalid.");
 
-    std::string socketFactory ="ns3::UdpSocketFactory";
+    std::string socketFactory ="ns3::QuicSocketFactory";
 
     // get users
     NodeContainer utUsers = m_satHelper->GetUtUsers();

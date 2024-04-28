@@ -41,6 +41,7 @@
 #include <fstream>
 #include <string>
 
+#include <ns3/config-store.h>
 #include "ns3/core-module.h"
 #include "ns3/network-module.h"
 #include "ns3/internet-module.h"
@@ -58,24 +59,8 @@
 
 using namespace ns3;
 
-NS_LOG_COMPONENT_DEFINE ("QuicVariantsComparisonBulkSend");
+NS_LOG_COMPONENT_DEFINE ("QuicVariantsComparison");
 
-
-class  CCAComparison {
-
-	public: 
-	
-	void  Run(int argc, char** argv);
-
-	private: 
-
-	void ReceivePacket(Ptr<Socket> socekt);
-	void CheckThroughput(); 
-	uint32_t bytesTotal{0};
-	uint32_t packetsReceived{0}; 
-
-
-}
 // connect to a number of traces
 static void
 CwndChange (Ptr<OutputStreamWrapper> stream, uint32_t oldCwnd, uint32_t newCwnd)
@@ -138,55 +123,9 @@ Traces(uint32_t serverId, std::string pathVersion, std::string finalPart)
   Config::ConnectWithoutContextFailSafe (pathRCWnd.str ().c_str (), MakeBoundCallback(&CwndChange, stream4));
 }
 
-void
-CCAComparison::ReceivePacket(Ptr<Socket> socket)
-{
-    Ptr<Packet> packet;
-    Address senderAddress;
-    while ((packet = socket->RecvFrom(senderAddress)))
-    {
-        bytesTotal += packet->GetSize();
-
-        packetsReceived += 1;
-       // NS_LOG_UNCOND(PrintReceivedPacket(socket, packet, senderAddress));
-    }
-}
-
-void
-CCAComparison::CheckThroughput()
-{
-    double kbs = (bytesTotal * 8.0) / 1000;
-    bytesTotal = 0;
-    std::ofstream out(m_CSVfileName, std::ios::app);
-
-    out << (Simulator::Now()).GetSeconds() << "," << kbs << "," << packetsReceived << ","
-       << m_nSinks << "," << m_protocolName << "," << m_txp << "" << std::endl;
-    
-    
-    out.close();
-
-    packetsReceived = 0;
-    Simulator::Schedule(Seconds(1.0), &RoutingExperiment::CheckThroughput, this);
-}
-
 int main (int argc, char *argv[])
-f{
-
-
-	CCCAComparison experiment; 
-	experiment.run(argc, argv);
-	return 0; 
-
-}
-
-void CCAComparison::Run(int argc, char* argv[]) {
-
-
-
-
-} 
-
-  std::string transport_prot = "QuicBbr";
+{
+  std::string transport_prot = "TcpVegas";
   double error_p = 0.0;
   std::string bandwidth = "2Mbps";
   std::string delay = "0.01ms";
@@ -207,7 +146,7 @@ void CCAComparison::Run(int argc, char* argv[]) {
   CommandLine cmd;
   cmd.AddValue ("transport_prot", "Transport protocol to use: TcpNewReno, "
                 "TcpHybla, TcpHighSpeed, TcpHtcp, TcpVegas, TcpScalable, TcpVeno, "
-                "TcpBic, TcpYeah, TcpIllinois, TcpLedbat", transport_prot);
+                "TcpBic, TcpYeah, TcpIllinois, TcpLedbat ", transport_prot);
   cmd.AddValue ("error_p", "Packet error rate", error_p);
   cmd.AddValue ("bandwidth", "Bottleneck bandwidth", bandwidth);
   cmd.AddValue ("delay", "Bottleneck delay", delay);
@@ -240,14 +179,13 @@ void CCAComparison::Run(int argc, char* argv[]) {
   // LogComponentEnable("PfifoFastQueueDisc", LOG_LEVEL_ALL);
   // LogComponentEnable ("QuicSocketBase", LOG_LEVEL_ALL);
   LogComponentEnable("TcpVegas", LOG_LEVEL_ALL);
-  LogComponentEnable("QuicBbr", LOG_LEVEL_ALL);
   // LogComponentEnable("QuicL5Protocol", LOG_LEVEL_ALL);
 
   // Set the simulation start and stop time
   float start_time = 0.1;
   float stop_time = start_time + duration;
 
-  // 4 MB of TCP buffer
+  // 4 MB of buffer
   Config::SetDefault ("ns3::QuicSocketBase::SocketRcvBufSize", UintegerValue (1 << 21));
   Config::SetDefault ("ns3::QuicSocketBase::SocketSndBufSize", UintegerValue (1 << 21));
   Config::SetDefault ("ns3::QuicStreamBase::StreamSndBufSize", UintegerValue (1 << 21));
@@ -365,26 +303,26 @@ void CCAComparison::Run(int argc, char* argv[]) {
   Ipv4GlobalRoutingHelper::PopulateRoutingTables ();
 
   uint16_t port = 50000;
-  Address sinkLocalAddress (InetSocketAddress (Ipv4Address::GetAny (), port));
-
   ApplicationContainer clientApps;
   ApplicationContainer serverApps;
-  // applications client and server
+  double interPacketInterval = 1000;
+
+  // QUIC client and server
   for (uint16_t i = 0; i < sources.GetN (); i++)
     {
+      QuicServerHelper dlPacketSinkHelper (port);
       AddressValue remoteAddress (InetSocketAddress (sink_interfaces.GetAddress (i, 0), port));
-      BulkSendHelper ftp ("ns3::QuicSocketFactory", Address ());
-      ftp.SetAttribute ("Remote", remoteAddress);
-      ftp.SetAttribute ("SendSize", UintegerValue (1400));
-      clientApps.Add(ftp.Install (sources.Get (i)));
-      PacketSinkHelper sinkHelper ("ns3::QuicSocketFactory", sinkLocalAddress);
-      sinkHelper.SetAttribute ("Protocol", TypeIdValue (QuicSocketFactory::GetTypeId ()));
-      serverApps.Add(sinkHelper.Install (sinks.Get (i)));
+      serverApps.Add (dlPacketSinkHelper.Install (sinks.Get (i)));
+      QuicClientHelper dlClient (sink_interfaces.GetAddress (i, 0), port);
+      dlClient.SetAttribute ("Interval", TimeValue (MicroSeconds(interPacketInterval)));
+      dlClient.SetAttribute ("PacketSize", UintegerValue(1400));
+      dlClient.SetAttribute ("MaxPackets", UintegerValue(10000000));
+      clientApps.Add (dlClient.Install (sources.Get (i)));
     }
 
   serverApps.Start (Seconds (0.99));
   clientApps.Stop (Seconds (20.0));
-  clientApps.Start (Seconds (2));
+  clientApps.Start (Seconds (2.0));
 
   for (uint16_t i = 0; i < num_flows; i++)
     {
@@ -411,7 +349,6 @@ void CCAComparison::Run(int argc, char* argv[]) {
       flowHelper.InstallAll ();
     }
 
-  CheckThroughput();
   Simulator::Stop (Seconds (stop_time));
   Simulator::Run ();
 
@@ -419,7 +356,7 @@ void CCAComparison::Run(int argc, char* argv[]) {
     {
       flowHelper.SerializeToXmlFile (prefix_file_name + ".flowmonitor", true, true);
     }
-x
+
   Simulator::Destroy ();
   return 0;
 }
